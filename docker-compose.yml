@@ -1,0 +1,157 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+#  Stylist Concierge — Docker Compose
+#  Services: qdrant | postgres | redis | app
+#  Usage:
+#    docker compose up -d                # start all services
+#    docker compose up -d qdrant postgres redis  # infra only (dev mode)
+#    docker compose logs -f app          # tail app logs
+# ─────────────────────────────────────────────────────────────
+
+networks:
+  stylist_net:
+    driver: bridge
+
+volumes:
+  qdrant_data:
+  postgres_data:
+  redis_data:
+
+services:
+
+  # ── Qdrant Vector Database ─────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    container_name: stylist_qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # HTTP REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - stylist_net
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: stylist_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-stylist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stylistpass}
+      POSTGRES_DB: ${POSTGRES_DB:-stylist_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stylist} -d ${POSTGRES_DB:-stylist_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - stylist_net
+
+  # ── Redis (Semantic Cache) ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: stylist_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stylist_net
+
+  # ── FastAPI Application ────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: stylist_app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # Override host-specific settings for container networking
+      QDRANT_HOST: qdrant
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stylist}:${POSTGRES_PASSWORD:-stylistpass}@postgres:5432/${POSTGRES_DB:-stylist_db}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      # Mount source for hot-reload in dev; remove for prod
+      - .:/app
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - stylist_net
+    # Uncomment for dev with hot-reload:
+    # command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Playwright Browser (for scraping) ─────────────────────
+  # Optional: run scraper as a separate service
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: scraper
+    container_name: stylist_scraper
+    restart: "no"   # run-once job
+    env_file:
+      - .env
+    environment:
+      QDRANT_HOST: qdrant
+      POSTGRES_HOST: postgres
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-stylist}:${POSTGRES_PASSWORD:-stylistpass}@postgres:5432/${POSTGRES_DB:-stylist_db}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: python -m scraper.pipeline
+    profiles:
+      - scraper   # only run with: docker compose --profile scraper up scraper
+    networks:
+      - stylist_net

@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────
+#  Stylist Concierge — Python Dependencies
+# ─────────────────────────────────────────────────────────────
+
+# ── FastAPI & Server ──────────────────────────────────────────
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+httpx==0.27.2
+
+# ── Pydantic & Settings ───────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# ── LangChain Core ───────────────────────────────────────────
+langchain==0.3.9
+langchain-core==0.3.21
+langchain-community==0.3.9
+langgraph==0.2.56
+
+# ── LLM Provider Adapters (all installed; only active one needs API key) ──
+langchain-groq==0.2.1
+langchain-openai==0.2.10
+langchain-anthropic==0.3.0
+langchain-google-genai==2.0.7
+
+# ── Vector Database ───────────────────────────────────────────
+qdrant-client==1.12.1
+langchain-qdrant==0.2.0
+
+# ── Database ─────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# ── Cache ─────────────────────────────────────────────────────
+redis[hiredis]==5.2.0
+
+# ── Scraping ─────────────────────────────────────────────────
+playwright==1.49.0
+beautifulsoup4==4.12.3
+lxml==5.3.0
+fake-useragent==1.5.1
+
+# ── Embeddings (local fallback) ───────────────────────────────
+sentence-transformers==3.3.1
+
+# ── Utilities ─────────────────────────────────────────────────
+python-dotenv==1.0.1
+tenacity==9.0.0          # retry logic
+numpy==1.26.4            # vector math
+orjson==3.10.12          # fast JSON
+structlog==24.4.0        # structured logging
+rich==13.9.4             # pretty terminal output
+python-jose[cryptography]==3.3.0  # JWT (future auth)
+passlib[bcrypt]==1.7.4   # password hashing (future auth)
+
+# ── Dev / Testing ─────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-httpx==0.32.0
+httpx==0.27.2
+aiosqlite==0.20.0        # SQLite async driver (tests only)

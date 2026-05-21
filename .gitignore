@@ -1,10 +1,48 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
-build/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
 dist/
-wheels/
-*.egg-info
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Virtual environments
-.venv
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Environment
+.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker volumes (local data)
+postgres_data/
+qdrant_data/
+redis_data/
+
+# Scraped data cache
+scraper/data/
+*.json.bak
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+htmlcov/
+.coverage
+coverage.xml

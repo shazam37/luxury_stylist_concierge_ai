@@ -85,6 +85,7 @@ async def style_me(
             parsed_intent=result.get("parsed_intent", {}),
             outfit=result["outfit"],
             alternatives=result.get("alternatives", []),
+            budget_summary=result.get("budget_summary"),
             token_usage=result.get("token_usage", TokenUsage()),
             agent_trace=result.get("agent_trace", []),
             latency_ms=latency_ms,

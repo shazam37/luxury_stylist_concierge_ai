@@ -5,7 +5,7 @@ from .requests import (
     ScraperTriggerRequest, ScraperJobResponse, ScraperJobStatusResponse,
     FeedbackRequest,
     HealthResponse, ErrorResponse,
-    FashionItem, OutfitOption, TokenUsage, BudgetRange,
+    FashionItem, OutfitOption, TokenUsage, BudgetRange, BudgetSummary,
     CategoryEnum, GenderEnum, StyleEnum,
 )
 
@@ -16,6 +16,6 @@ __all__ = [
     "ScraperTriggerRequest", "ScraperJobResponse", "ScraperJobStatusResponse",
     "FeedbackRequest",
     "HealthResponse", "ErrorResponse",
-    "FashionItem", "OutfitOption", "TokenUsage", "BudgetRange",
+    "FashionItem", "OutfitOption", "TokenUsage", "BudgetRange", "BudgetSummary",
     "CategoryEnum", "GenderEnum", "StyleEnum",
 ]

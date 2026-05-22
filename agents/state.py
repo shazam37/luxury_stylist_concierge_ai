@@ -11,6 +11,24 @@ from typing import Any, Optional
 from typing_extensions import TypedDict
 
 
+class QueryPlan(TypedDict, total=False):
+    """
+    Explicit retrieval plan produced by query_planner and consumed by rag_retriever.
+    Decouples retrieval decisions from execution.
+    """
+    categories: list[str]                  # which categories to retrieve
+    category_queries: dict[str, str]       # per-category semantic query string
+    limits: dict[str, int]                 # per-category result count
+    sort_strategy: str                     # "relevance" | "price_asc" | "price_desc"
+    score_threshold: float                 # minimum cosine similarity to accept
+    occasion: str
+    formality: str
+    season: str
+    color_palette: list[str]
+    owned_colors: list[str]
+    style_keywords: list[str]
+
+
 class ParsedIntent(TypedDict, total=False):
     """Structured extraction from user prompt."""
     occasion: str                    # e.g. "yacht party", "office", "date night"
@@ -53,12 +71,16 @@ class StylistState(TypedDict, total=False):
     cached_response: Optional[dict]
 
     # ── RAG retrieval ────────────────────────
-    retrieved_items: dict[str, list[dict]]   # category → list of items
+    query_plan: QueryPlan                        # produced by query_planner
+    retrieved_items: dict[str, list[dict]]       # category → list of items
 
     # ── Fashion reasoning ────────────────────
-    ranked_items: dict[str, list[dict]]      # after coherence + rule scoring
-    outfit_primary: dict                     # selected primary outfit
-    outfit_alternatives: list[dict]          # 2 alternatives
+    ranked_items: dict[str, list[dict]]          # after coherence + rule scoring
+    outfit_primary: dict                         # selected primary outfit
+    outfit_alternatives: list[dict]              # 2 alternatives
+
+    # ── Price optimisation ───────────────────
+    budget_summary: dict                         # produced by price_optimizer
 
     # ── Output ───────────────────────────────
     stylist_note: str

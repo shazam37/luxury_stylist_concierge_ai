@@ -17,6 +17,7 @@ async def run_response_formatter(state: StylistState) -> dict:
     primary_raw = state.get("outfit_primary", {})
     alternatives_raw = state.get("outfit_alternatives", [])
     parsed = state.get("parsed_intent", {})
+    budget_summary_raw = state.get("budget_summary")
 
     # Build OutfitOption objects
     primary_outfit = _build_outfit_option(primary_raw)
@@ -25,12 +26,22 @@ async def run_response_formatter(state: StylistState) -> dict:
     # Compute total token usage
     token_usage = _aggregate_token_usage(state.get("token_usage", {}))
 
+    # Build BudgetSummary if price_optimizer ran
+    budget_summary = None
+    if budget_summary_raw:
+        from api.schemas import BudgetSummary
+        try:
+            budget_summary = BudgetSummary(**budget_summary_raw)
+        except Exception:
+            budget_summary = None
+
     # Build final response dict
     final_response = {
         "cache_hit": state.get("cache_hit", False),
         "parsed_intent": parsed,
         "outfit": primary_outfit,
         "alternatives": alternatives,
+        "budget_summary": budget_summary,
         "token_usage": token_usage,
         "agent_trace": state.get("agent_trace", []) + ["formatted"],
         "model_used": _get_model_name(),
@@ -42,12 +53,12 @@ async def run_response_formatter(state: StylistState) -> dict:
         try:
             from cache.semantic_cache import get_semantic_cache
             cache = get_semantic_cache()
-            # Store a serialisable version
             cacheable = {
                 "cache_hit": True,
                 "parsed_intent": parsed,
                 "outfit": primary_outfit.model_dump(),
                 "alternatives": [a.model_dump() for a in alternatives],
+                "budget_summary": budget_summary.model_dump() if budget_summary else None,
                 "token_usage": token_usage.model_dump(),
                 "agent_trace": final_response["agent_trace"] + ["from_cache"],
                 "model_used": final_response["model_used"],
@@ -64,7 +75,7 @@ async def run_response_formatter(state: StylistState) -> dict:
 
 
 def _build_outfit_option(raw: dict) -> OutfitOption:
-    """Convert raw LLM output dict to OutfitOption schema."""
+    """Convert raw LLM / price-optimizer output dict to OutfitOption schema."""
     if not raw:
         return OutfitOption(stylist_note="No outfit available.", total_price=0.0)
 
@@ -101,6 +112,8 @@ def _build_outfit_option(raw: dict) -> OutfitOption:
         total_price=round(total, 2),
         stylist_note=raw.get("stylist_note") or "A carefully curated look for you.",
         style_tags=raw.get("style_tags") or [],
+        price_tier=raw.get("price_tier"),
+        price_tier_label=raw.get("price_tier_label"),
     )
 
 

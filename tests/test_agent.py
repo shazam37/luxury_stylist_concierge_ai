@@ -71,11 +71,16 @@ class TestRagRetriever:
     @pytest.mark.asyncio
     async def test_retrieves_multiple_categories(self):
         mock_qdrant = AsyncMock()
-        mock_qdrant.multi_category_search = AsyncMock(return_value={"top": [], "shoes": []})
-        with patch("embeddings.indexer._qdrant_manager", mock_qdrant):
-            result = await run_rag_retriever(_base_state())
+        mock_qdrant.search = AsyncMock(return_value=[])
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_query = AsyncMock(return_value=[0.1] * 1536)
+        state = _base_state()
+        state["query_plan"] = {"categories": ["top", "shoes"], "limits": {"top": 8, "shoes": 6},
+                                "score_threshold": 0.6, "category_queries": {"top": "linen shirt", "shoes": "espadrilles"}}
+        with patch("embeddings.indexer.get_qdrant_manager", return_value=mock_qdrant),              patch("embeddings.embedder.get_embedder", return_value=mock_embedder):
+            result = await run_rag_retriever(state)
         assert "retrieved_items" in result
-        mock_qdrant.multi_category_search.assert_called_once()
+        assert mock_qdrant.search.call_count == 2  # once per category
 
     @pytest.mark.asyncio
     async def test_no_vector_returns_empty(self):
@@ -86,33 +91,46 @@ class TestRagRetriever:
     @pytest.mark.asyncio
     async def test_passes_gender_filter(self):
         mock_qdrant = AsyncMock()
-        mock_qdrant.multi_category_search = AsyncMock(return_value={})
+        mock_qdrant.search = AsyncMock(return_value=[])
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_query = AsyncMock(return_value=[0.1] * 1536)
         state = _base_state(gender="female")
         state["parsed_intent"]["gender"] = "female"
-        with patch("embeddings.indexer._qdrant_manager", mock_qdrant):
+        state["query_plan"] = {"categories": ["top"], "limits": {"top": 8},
+                                "score_threshold": 0.6, "category_queries": {"top": "blouse"}}
+        with patch("embeddings.indexer.get_qdrant_manager", return_value=mock_qdrant),              patch("embeddings.embedder.get_embedder", return_value=mock_embedder):
             await run_rag_retriever(state)
-        call_kwargs = mock_qdrant.multi_category_search.call_args.kwargs
-        assert call_kwargs["filters"].get("gender") == "female"
+        call_kwargs = mock_qdrant.search.call_args.kwargs
+        assert call_kwargs.get("gender") == "female"
 
     @pytest.mark.asyncio
     async def test_passes_budget_filter(self):
         mock_qdrant = AsyncMock()
-        mock_qdrant.multi_category_search = AsyncMock(return_value={})
+        mock_qdrant.search = AsyncMock(return_value=[])
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_query = AsyncMock(return_value=[0.1] * 1536)
         state = _base_state(budget_max=150.0)
         state["parsed_intent"]["budget_max"] = 150.0
-        with patch("embeddings.indexer._qdrant_manager", mock_qdrant):
+        state["query_plan"] = {"categories": ["top"], "limits": {"top": 8},
+                                "score_threshold": 0.6, "category_queries": {"top": "shirt"}}
+        with patch("embeddings.indexer.get_qdrant_manager", return_value=mock_qdrant),              patch("embeddings.embedder.get_embedder", return_value=mock_embedder):
             await run_rag_retriever(state)
-        call_kwargs = mock_qdrant.multi_category_search.call_args.kwargs
-        assert call_kwargs["filters"].get("max_price") == 150.0
+        call_kwargs = mock_qdrant.search.call_args.kwargs
+        assert call_kwargs.get("max_price") == 150.0
 
     @pytest.mark.asyncio
     async def test_qdrant_error_handled(self):
         mock_qdrant = AsyncMock()
-        mock_qdrant.multi_category_search = AsyncMock(side_effect=Exception("Qdrant down"))
-        with patch("embeddings.indexer._qdrant_manager", mock_qdrant):
-            result = await run_rag_retriever(_base_state())
-        assert "rag_failed" in result["agent_trace"]
-        assert len(result["errors"]) > 0
+        mock_qdrant.search = AsyncMock(side_effect=Exception("Qdrant down"))
+        mock_embedder = AsyncMock()
+        mock_embedder.embed_query = AsyncMock(return_value=[0.1] * 1536)
+        state = _base_state()
+        state["query_plan"] = {"categories": ["top"], "limits": {"top": 8},
+                                "score_threshold": 0.6, "category_queries": {"top": "shirt"}}
+        with patch("embeddings.indexer.get_qdrant_manager", return_value=mock_qdrant),              patch("embeddings.embedder.get_embedder", return_value=mock_embedder):
+            result = await run_rag_retriever(state)
+        # Per-category errors are caught; returns empty dict not fatal
+        assert "retrieved_items" in result
 
 
 class TestResponseFormatter:
@@ -177,22 +195,23 @@ class TestResponseFormatter:
 
 class TestGraphRouting:
     def test_graph_has_all_nodes(self):
-        from agents.graph import get_graph
-        g = get_graph()
+        import agents.graph as ag; ag._compiled_graph = None
+        g = ag.get_graph()
         expected = {"__start__", "load_wardrobe", "intent_parser", "cache_check",
-                    "rag_retriever", "fashion_reasoner", "response_formatter", "cache_formatter"}
+                    "query_planner", "rag_retriever", "fashion_reasoner",
+                    "price_optimizer", "response_formatter", "cache_formatter"}
         assert expected.issubset(set(g.nodes.keys()))
 
     def test_route_cache_miss(self):
         from agents.graph import route_after_cache
-        assert route_after_cache(_base_state(cache_hit=False)) == "rag_retriever"
+        assert route_after_cache(_base_state(cache_hit=False)) == "query_planner"
 
     def test_route_cache_hit(self):
         from agents.graph import route_after_cache
         state = _base_state(cache_hit=True, cached_response={"outfit": {}})
-        assert route_after_cache(state) == "response_formatter"
+        assert route_after_cache(state) == "cache_formatter"
 
     def test_route_cache_hit_no_data(self):
         from agents.graph import route_after_cache
         state = _base_state(cache_hit=True, cached_response=None)
-        assert route_after_cache(state) == "rag_retriever"
+        assert route_after_cache(state) == "query_planner"

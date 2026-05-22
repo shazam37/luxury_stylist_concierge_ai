@@ -69,6 +69,21 @@ class OutfitOption(BaseModel):
     total_price: float = 0.0
     stylist_note: str
     style_tags: list[str] = []
+    # Price optimizer fields
+    price_tier: Optional[str] = None        # "value_pick" | "splurge_pick" | "balanced"
+    price_tier_label: Optional[str] = None  # human-readable label
+
+
+class BudgetSummary(BaseModel):
+    """Budget analysis produced by price_optimizer node."""
+    primary_total: float = 0.0
+    budget_max: Optional[float] = None
+    budget_min: Optional[float] = None
+    within_budget: bool = True
+    swapped_items: list[str] = []
+    savings_vs_splurge: Optional[float] = None
+    value_outfit_total: Optional[float] = None
+    splurge_outfit_total: Optional[float] = None
 
 
 class TokenUsage(BaseModel):
@@ -134,6 +149,9 @@ class StyleMeResponse(BaseModel):
     # Outfit recommendations
     outfit: OutfitOption
     alternatives: list[OutfitOption] = []
+
+    # Budget analysis (populated when budget is set or always)
+    budget_summary: Optional[BudgetSummary] = None
 
     # Metadata
     token_usage: TokenUsage = TokenUsage()

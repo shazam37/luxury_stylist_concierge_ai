@@ -82,9 +82,30 @@ class QdrantManager:
     # ─────────────────────────────────────────
 
     async def ensure_collection(self) -> None:
-        """Create the collection if it doesn't exist, with all payload indexes."""
+        """
+        Create the collection if it doesn't exist, with all payload indexes.
+        If the collection exists but with a different vector dimension (e.g. switching
+        from OpenAI 1536-dim to local 384-dim), recreates it automatically.
+        """
         collections = await self._async_client.get_collections()
         existing = [c.name for c in collections.collections]
+
+        if self.collection in existing:
+            # Check dimension matches — recreate if not
+            try:
+                info = await self._async_client.get_collection(self.collection)
+                existing_dim = info.config.params.vectors.size
+                if existing_dim != self.dimension:
+                    logger.warning(
+                        "qdrant.dimension_mismatch",
+                        existing=existing_dim,
+                        configured=self.dimension,
+                        action="recreating_collection",
+                    )
+                    await self._async_client.delete_collection(self.collection)
+                    existing.remove(self.collection)
+            except Exception as e:
+                logger.warning("qdrant.collection_info_failed", error=str(e))
 
         if self.collection not in existing:
             await self._async_client.create_collection(

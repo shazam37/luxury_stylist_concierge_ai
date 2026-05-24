@@ -1,38 +1,75 @@
+# syntax=docker/dockerfile:1.7
+
 # ─────────────────────────────────────────────────────────────
-#  Stylist Concierge — Multi-stage Dockerfile
-#  Stages:
-#    base      → shared Python + system deps
-#    scraper   → base + Playwright browsers
-#    production → base + app only (no browsers, smaller image)
+#  Stylist Concierge — Optimized Multi-stage Dockerfile
 # ─────────────────────────────────────────────────────────────
 
-# ── Stage 1: Base ──────────────────────────────────────────────
+# ── Stage 1: Base ────────────────────────────────────────────
 FROM python:3.12-slim AS base
+
+WORKDIR /app
+
+# Python optimizations
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# HuggingFace / Torch cache locations
+ENV HF_HOME=/root/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/transformers
+ENV TORCH_HOME=/root/.cache/torch
 
 # System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
+    g++ \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# Install Python dependencies
+# Copy dependency file first for layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
 
-# ── Stage 2: Scraper (base + Playwright browsers) ──────────────
+# ─────────────────────────────────────────────────────────────
+# Install Python dependencies with pip cache mount
+# ─────────────────────────────────────────────────────────────
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# ─────────────────────────────────────────────────────────────
+# Pre-download heavy ML models/libraries
+# This layer gets cached separately
+# ─────────────────────────────────────────────────────────────
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    --mount=type=cache,target=/root/.cache/torch \
+    python -c "\
+from sentence_transformers import SentenceTransformer; \
+SentenceTransformer('all-MiniLM-L6-v2')"
+
+# OPTIONAL:
+# Add any additional models here
+#
+# RUN --mount=type=cache,target=/root/.cache/huggingface \
+#     --mount=type=cache,target=/root/.cache/torch \
+#     python -c '\
+# from transformers import pipeline; \
+# pipeline(\"text-generation\", model=\"gpt2\")'
+
+# ── Stage 2: Scraper (Playwright) ────────────────────────────
 FROM base AS scraper
 
-RUN pip install --no-cache-dir playwright \
-    && playwright install chromium \
-    && playwright install-deps chromium
+# Install Playwright separately so browser layer is cached
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install playwright
+
+# Cache Playwright browser binaries
+RUN --mount=type=cache,target=/root/.cache/ms-playwright \
+    playwright install chromium && \
+    playwright install-deps chromium
 
 COPY . .
 
-# ── Stage 3: Production App ────────────────────────────────────
+# ── Stage 3: Production ──────────────────────────────────────
 FROM base AS production
 
 COPY . .
